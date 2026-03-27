@@ -18,7 +18,7 @@ export default async function AutorizacionPage({ params }: Props) {
     .from('perfiles_usuario')
     .select('rol')
     .eq('usuario_id', user.id)
-    .single()
+    .maybeSingle()
 
   const { autorizacion } = await obtenerAutorizacionAction(id)
   if (!autorizacion) notFound()
@@ -26,7 +26,7 @@ export default async function AutorizacionPage({ params }: Props) {
   return (
     <AutorizacionDetalle
       autorizacion={autorizacion as any}
-      esAdmin={perfil?.rol === 'admin'}
+      esAdmin={(perfil as any)?.rol === 'admin'}
     />
   )
 }
