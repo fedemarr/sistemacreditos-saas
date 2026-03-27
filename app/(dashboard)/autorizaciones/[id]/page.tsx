@@ -14,7 +14,7 @@ export default async function AutorizacionPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: perfil } = await supabase
+  const perfil = await supabase
     .from('perfiles_usuario')
     .select('rol')
     .eq('usuario_id', user.id)
@@ -23,10 +23,12 @@ export default async function AutorizacionPage({ params }: Props) {
   const { autorizacion } = await obtenerAutorizacionAction(id)
   if (!autorizacion) notFound()
 
+  const esAdmin = perfil.data?.rol === 'admin'
+
   return (
     <AutorizacionDetalle
       autorizacion={autorizacion as any}
-      esAdmin={(perfil as any)?.rol === 'admin'}
+      esAdmin={esAdmin}
     />
   )
 }
