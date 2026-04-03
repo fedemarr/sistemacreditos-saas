@@ -3,7 +3,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  output: "standalone",
   images: {
     remotePatterns: [
       {
@@ -14,5 +13,4 @@ const nextConfig = {
     ],
   },
 }
-
 module.exports = nextConfig
