@@ -10,7 +10,6 @@ export const metadata: Metadata = { title: 'Clientes' }
 export default async function ClientesPage() {
   const supabase = await createClient()
 
-  // Obtener empresa del usuario
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -22,23 +21,18 @@ export default async function ClientesPage() {
 
   if (!perfil) redirect('/login')
 
-  // Cargar primera página de clientes en el servidor (SSR)
-  const { data: clientes, count } = await supabase
-    .from('clientes')
-    .select('*', { count: 'exact' })
-    .eq('empresa_id', perfil.empresa_id)
-    .order('created_at', { ascending: false })
-    .range(0, 19)
+  // No cargamos clientes al inicio — la tabla arranca vacía
+  // El usuario tiene que buscar para ver resultados
 
   return (
     <div>
       <PageHeader
         titulo="Clientes"
-        descripcion="Administrá tu base de clientes"
+        descripcion="Buscá un cliente por nombre, apellido o DNI"
       />
       <ClientesTabla
-        clientesIniciales={(clientes ?? []) as Cliente[]}
-        totalInicial={count ?? 0}
+        clientesIniciales={[]}
+        totalInicial={0}
       />
     </div>
   )

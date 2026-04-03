@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { crearSolicitudAction } from '@/lib/actions/solicitudes'
 import { solicitudSchema, type SolicitudData } from '@/lib/validations/solicitud.schema'
-import { calcularPlanDePagos, calcularTotalFinanciado } from '@/lib/calculadora/amortizacion'
+import { calcularPlanDePagos, calcularTotalFinanciado, OPCIONES_REDONDEO } from '@/lib/calculadora/amortizacion'
 import { SistemaAmortizacion } from '@/types/enums'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,12 @@ interface SolicitudFormProps {
   clientePreseleccionado?: any
 }
 
+const SISTEMAS_AMORTIZACION = [
+  { value: 'frances', label: 'Francés (cuota fija)' },
+  { value: 'aleman', label: 'Alemán (capital fijo)' },
+  { value: 'directo', label: 'Interés directo' },
+]
+
 export function SolicitudForm({ planes, comercios, autorizacion, clientePreseleccionado }: SolicitudFormProps) {
   const [isPending, startTransition] = useTransition()
   const [buscandoCliente, setBuscandoCliente] = useState(false)
@@ -31,7 +37,9 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
     autorizacion?.clientes ?? clientePreseleccionado ?? null
   )
   const [busquedaDni, setBusquedaDni] = useState('')
-  const [simulacion, setSimulacion] = useState<{ cuota: number; total: number } | null>(null)
+  const [simulacion, setSimulacion] = useState<{ cuota: number; total: number; cuotaRedondeada?: number } | null>(null)
+  const [redondeo, setRedondeo] = useState(0)
+  const [redondeoHacia, setRedondeoHacia] = useState<'arriba' | 'abajo' | 'cercano'>('cercano')
   const supabase = createClient()
 
   const form = useForm<SolicitudData>({
@@ -55,7 +63,6 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
     },
   })
 
-  // Simular cuota cuando cambian los valores financieros
   const capital = form.watch('capital_pedido')
   const tasa = form.watch('tasa_anual')
   const cuotas = form.watch('cantidad_cuotas')
@@ -65,13 +72,23 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
   useEffect(() => {
     if (capital > 0 && tasa > 0 && cuotas > 0 && fechaVto) {
       try {
-        const plan = calcularPlanDePagos(
+        // Sin redondeo para mostrar cuota exacta
+        const planBase = calcularPlanDePagos(
           { monto: capital, tasaAnual: tasa, cantidadCuotas: cuotas, fechaPrimerVencimiento: fechaVto },
           sistema as SistemaAmortizacion
         )
+        // Con redondeo si está configurado
+        const planRedondeado = redondeo > 0
+          ? calcularPlanDePagos(
+              { monto: capital, tasaAnual: tasa, cantidadCuotas: cuotas, fechaPrimerVencimiento: fechaVto, redondeo, redondeoHacia },
+              sistema as SistemaAmortizacion
+            )
+          : planBase
+
         setSimulacion({
-          cuota: plan[0]?.total ?? 0,
-          total: calcularTotalFinanciado(plan),
+          cuota: planBase[0]?.total ?? 0,
+          total: calcularTotalFinanciado(planBase),
+          cuotaRedondeada: redondeo > 0 ? planRedondeado[0]?.total : undefined,
         })
       } catch {
         setSimulacion(null)
@@ -79,9 +96,8 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
     } else {
       setSimulacion(null)
     }
-  }, [capital, tasa, cuotas, sistema, fechaVto])
+  }, [capital, tasa, cuotas, sistema, fechaVto, redondeo, redondeoHacia])
 
-  // Al seleccionar un plan, autocompletar tasa y cuotas
   function handlePlanChange(planId: string) {
     const plan = planes.find(p => p.id === planId)
     if (plan) {
@@ -228,9 +244,57 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
           </div>
 
           <div className="space-y-2">
+            <Label>Sistema de amortización</Label>
+            <Select
+              defaultValue="frances"
+              value={sistema}
+              onValueChange={v => form.setValue('sistema_amortizacion', v as any)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SISTEMAS_AMORTIZACION.map(s => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {sistema === 'directo' && (
+              <p className="text-xs text-slate-500">
+                Cuota = (Capital + Interés total) ÷ Cuotas. Todas las cuotas son iguales.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
             <Label>Gastos ($)</Label>
             <Input type="number" step="0.01" {...form.register('gastos', { valueAsNumber: true })} />
           </div>
+
+          {/* Redondeo de cuotas */}
+          <div className="space-y-2">
+            <Label>Redondeo de cuota</Label>
+            <Select defaultValue="0" onValueChange={v => setRedondeo(Number(v))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OPCIONES_REDONDEO.map(o => (
+                  <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {redondeo > 0 && (
+            <div className="space-y-2">
+              <Label>Redondear hacia</Label>
+              <Select defaultValue="cercano" onValueChange={v => setRedondeoHacia(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cercano">Más cercano</SelectItem>
+                  <SelectItem value="arriba">Arriba (favorece empresa)</SelectItem>
+                  <SelectItem value="abajo">Abajo (favorece cliente)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Descuento ($)</Label>
@@ -241,14 +305,21 @@ export function SolicitudForm({ planes, comercios, autorizacion, clientePreselec
         {/* Simulador de cuota */}
         {simulacion && (
           <div className="mt-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-4">
-            <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2 mb-2">
+            <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2 mb-3">
               <Calculator className="w-4 h-4" /> Simulación
+              {sistema === 'directo' && <span className="text-xs font-normal">(interés directo)</span>}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-blue-600 dark:text-blue-500">1° cuota estimada</p>
+                <p className="text-xs text-blue-600 dark:text-blue-500">Cuota exacta</p>
                 <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatMoneda(simulacion.cuota)}</p>
               </div>
+              {simulacion.cuotaRedondeada && simulacion.cuotaRedondeada !== simulacion.cuota && (
+                <div>
+                  <p className="text-xs text-blue-600 dark:text-blue-500">Cuota redondeada</p>
+                  <p className="text-xl font-bold text-green-700 dark:text-green-400">{formatMoneda(simulacion.cuotaRedondeada)}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-blue-600 dark:text-blue-500">Total a pagar</p>
                 <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatMoneda(simulacion.total)}</p>

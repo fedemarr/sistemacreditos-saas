@@ -1,8 +1,6 @@
 'use client'
 
-// Vista de detalle completa del cliente con tabs.
-// Muestra: datos personales, laboral, créditos, trámites e historial.
-
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -13,9 +11,11 @@ import {
 } from '@/lib/utils/formatters'
 import {
   User, Briefcase, CreditCard, ClipboardList,
-  Phone, Mail, MapPin, ArrowLeft, Pencil,
-  Calendar, DollarSign, Users,
+  Phone, MapPin, ArrowLeft, Pencil,
+  Users, ChevronDown, ChevronUp, DollarSign,
+  AlertTriangle, CheckCircle2, Clock,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ClienteDetalleProps {
   cliente: Record<string, any>
@@ -30,7 +30,6 @@ export function ClienteDetalle({
   cliente, laboral, referencias, familiar, tramites, creditos,
 }: ClienteDetalleProps) {
   const router = useRouter()
-
   const nombrecompleto = nombreCompleto(cliente.nombre, cliente.apellido)
 
   return (
@@ -53,14 +52,11 @@ export function ClienteDetalle({
       {/* Card de resumen */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-6 mb-6">
         <div className="flex flex-wrap gap-6 items-center">
-          {/* Avatar */}
           <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
             <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {cliente.apellido?.charAt(0)}{cliente.nombre?.charAt(0)}
             </span>
           </div>
-
-          {/* Info rápida */}
           <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Estado</p>
@@ -88,7 +84,6 @@ export function ClienteDetalle({
         </div>
       </div>
 
-      {/* Tabs de información */}
       <Tabs defaultValue="datos">
         <TabsList className="mb-6">
           <TabsTrigger value="datos" className="gap-2">
@@ -110,7 +105,6 @@ export function ClienteDetalle({
         {/* TAB: Datos personales */}
         <TabsContent value="datos">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Identificación */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                 <User className="w-4 h-4" /> Identificación
@@ -126,7 +120,6 @@ export function ClienteDetalle({
               </div>
             </div>
 
-            {/* Contacto */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                 <Phone className="w-4 h-4" /> Contacto y domicilio
@@ -149,7 +142,6 @@ export function ClienteDetalle({
               </div>
             </div>
 
-            {/* Referencias */}
             {referencias.length > 0 && (
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
@@ -166,7 +158,6 @@ export function ClienteDetalle({
               </div>
             )}
 
-            {/* Datos familiares */}
             {familiar && (
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
@@ -200,7 +191,6 @@ export function ClienteDetalle({
                   <Fila label="Fecha ingreso" valor={laboral.fecha_ingreso ? formatFecha(laboral.fecha_ingreso) : null} />
                 </div>
               </div>
-
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                   <MapPin className="w-4 h-4" /> Destino del empleo
@@ -218,54 +208,17 @@ export function ClienteDetalle({
           ) : (
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-12 text-center">
               <p className="text-slate-400 text-sm">No hay datos laborales cargados</p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => window.location.href = `/clientes/${cliente.id}/editar`}
-              >
+              <Button variant="outline" className="mt-4"
+                onClick={() => router.push(`/clientes/${cliente.id}/editar`)}>
                 Agregar datos laborales
               </Button>
             </div>
           )}
         </TabsContent>
 
-        {/* TAB: Créditos */}
+        {/* TAB: Créditos — vista mejorada con cards expandibles */}
         <TabsContent value="creditos">
-          {creditos.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-12 text-center">
-              <CreditCard className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">Este cliente no tiene créditos</p>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-800/50">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-slate-600 dark:text-slate-400 font-medium">N° Crédito</th>
-                    <th className="text-left px-4 py-3 text-slate-600 dark:text-slate-400 font-medium">Monto</th>
-                    <th className="text-left px-4 py-3 text-slate-600 dark:text-slate-400 font-medium">Cuotas</th>
-                    <th className="text-left px-4 py-3 text-slate-600 dark:text-slate-400 font-medium">Otorgamiento</th>
-                    <th className="text-left px-4 py-3 text-slate-600 dark:text-slate-400 font-medium">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {creditos.map((credito: any) => (
-                    <tr
-                      key={credito.id}
-                      className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
-                      onClick={() => window.location.href = `/creditos/${credito.id}`}
-                    >
-                      <td className="px-4 py-3 font-mono font-medium">#{credito.numero_credito}</td>
-                      <td className="px-4 py-3">{formatMoneda(credito.monto_otorgado)}</td>
-                      <td className="px-4 py-3">{credito.cantidad_cuotas} cuotas</td>
-                      <td className="px-4 py-3">{formatFecha(credito.fecha_otorgamiento)}</td>
-                      <td className="px-4 py-3"><StatusBadge estado={credito.estado} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <TabCreditos creditos={creditos} clienteId={cliente.id} />
         </TabsContent>
 
         {/* TAB: Trámites */}
@@ -278,10 +231,7 @@ export function ClienteDetalle({
           ) : (
             <div className="space-y-3">
               {tramites.map((tramite: any) => (
-                <div
-                  key={tramite.id}
-                  className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4"
-                >
+                <div key={tramite.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
@@ -292,9 +242,7 @@ export function ClienteDetalle({
                         <p className="text-sm text-slate-700 dark:text-slate-300">{tramite.observacion_1}</p>
                       )}
                     </div>
-                    <span className="text-xs text-slate-400">
-                      {formatFecha(tramite.created_at)}
-                    </span>
+                    <span className="text-xs text-slate-400">{formatFecha(tramite.created_at)}</span>
                   </div>
                 </div>
               ))}
@@ -306,7 +254,247 @@ export function ClienteDetalle({
   )
 }
 
-// Componente auxiliar para mostrar fila de dato
+// ─── TAB CRÉDITOS ─────────────────────────────────────────────────────────────
+function TabCreditos({ creditos, clienteId }: { creditos: any[]; clienteId: string }) {
+  const router = useRouter()
+
+  if (creditos.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-12 text-center">
+        <CreditCard className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-400 text-sm">Este cliente no tiene créditos</p>
+        <Button variant="outline" className="mt-4" onClick={() => router.push('/solicitudes/nueva')}>
+          Crear solicitud de crédito
+        </Button>
+      </div>
+    )
+  }
+
+  // Separar activos/mora de cancelados
+  const activos = creditos.filter(c => ['activo', 'en_mora'].includes(c.estado))
+  const cerrados = creditos.filter(c => !['activo', 'en_mora'].includes(c.estado))
+
+  return (
+    <div className="space-y-4">
+      {/* Resumen rápido si tiene más de 1 crédito */}
+      {creditos.length > 1 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 text-center">
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{creditos.length}</p>
+            <p className="text-xs text-slate-500">Total créditos</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 text-center">
+            <p className="text-2xl font-bold text-blue-600">{activos.length}</p>
+            <p className="text-xs text-slate-500">Activos</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 text-center">
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+              {formatMoneda(activos.reduce((a, c) => a + (c.monto_otorgado ?? 0), 0))}
+            </p>
+            <p className="text-xs text-slate-500">Capital activo</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 text-center">
+            <p className="text-2xl font-bold text-green-600">{cerrados.length}</p>
+            <p className="text-xs text-slate-500">Cancelados</p>
+          </div>
+        </div>
+      )}
+
+      {/* Créditos activos */}
+      {activos.length > 0 && (
+        <div className="space-y-3">
+          {creditos.length > 1 && (
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Activos</p>
+          )}
+          {activos.map(credito => (
+            <CreditoCard key={credito.id} credito={credito} />
+          ))}
+        </div>
+      )}
+
+      {/* Créditos cerrados */}
+      {cerrados.length > 0 && (
+        <div className="space-y-3">
+          {creditos.length > 1 && (
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4">Histórico</p>
+          )}
+          {cerrados.map(credito => (
+            <CreditoCard key={credito.id} credito={credito} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── CARD DE CRÉDITO EXPANDIBLE ───────────────────────────────────────────────
+function CreditoCard({ credito }: { credito: any }) {
+  const router = useRouter()
+  const [expandido, setExpandido] = useState(false)
+
+  const cuotas = credito.cuotas ?? []
+  const cuotasPagadas = cuotas.filter((c: any) => c.estado === 'pagada').length
+  const cuotasVencidas = cuotas.filter((c: any) => c.estado === 'vencida').length
+  const cuotasPendientes = cuotas.filter((c: any) => ['pendiente', 'parcial'].length)
+  const progreso = cuotas.length > 0 ? Math.round((cuotasPagadas / cuotas.length) * 100) : 0
+
+  // Próxima cuota a pagar
+  const proximaCuota = cuotas.find((c: any) => c.estado !== 'pagada')
+
+  const colorEstado = {
+    activo: 'border-l-blue-500',
+    en_mora: 'border-l-red-500',
+    cancelado: 'border-l-green-500',
+    incobrable: 'border-l-slate-400',
+    refinanciado: 'border-l-amber-500',
+  }[credito.estado] ?? 'border-l-slate-300'
+
+  return (
+    <div className={cn(
+      'bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 border-l-4 overflow-hidden',
+      colorEstado
+    )}>
+      {/* Header del crédito — siempre visible */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-lg">
+                #{credito.numero_credito}
+              </span>
+              <StatusBadge estado={credito.estado} />
+              {cuotasVencidas > 0 && (
+                <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {cuotasVencidas} vencida{cuotasVencidas !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Capital</p>
+                <p className="font-semibold text-slate-900 dark:text-white">{formatMoneda(credito.monto_otorgado)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Total financiado</p>
+                <p className="font-semibold text-slate-900 dark:text-white">{formatMoneda(credito.monto_total_financiado)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Cuotas</p>
+                <p className="font-semibold text-slate-900 dark:text-white">
+                  {cuotasPagadas}/{credito.cantidad_cuotas}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Otorgamiento</p>
+                <p className="font-semibold text-slate-900 dark:text-white">{formatFecha(credito.fecha_otorgamiento)}</p>
+              </div>
+            </div>
+
+            {/* Barra de progreso */}
+            {cuotas.length > 0 && (
+              <div className="mt-3">
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>{progreso}% pagado</span>
+                  <span>{credito.cantidad_cuotas - cuotasPagadas} cuotas restantes</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
+                  <div
+                    className={cn(
+                      'h-1.5 rounded-full transition-all',
+                      cuotasVencidas > 0 ? 'bg-red-500' : 'bg-blue-500'
+                    )}
+                    style={{ width: `${progreso}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Próxima cuota */}
+            {proximaCuota && credito.estado !== 'cancelado' && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                <Clock className="w-3.5 h-3.5" />
+                <span>
+                  Próxima: cuota {proximaCuota.numero_cuota} — {formatFecha(proximaCuota.fecha_vencimiento)} — {formatMoneda(proximaCuota.saldo_pendiente ?? proximaCuota.total)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Acciones */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" variant="outline" className="text-xs h-8"
+              onClick={() => router.push(`/creditos/${credito.id}`)}>
+              Ver detalle
+            </Button>
+            {cuotas.length > 0 && (
+              <button
+                onClick={() => setExpandido(!expandido)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                {expandido
+                  ? <ChevronUp className="w-4 h-4 text-slate-500" />
+                  : <ChevronDown className="w-4 h-4 text-slate-500" />
+                }
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Detalle expandible de cuotas */}
+      {expandido && cuotas.length > 0 && (
+        <div className="border-t border-slate-100 dark:border-slate-800">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800/50">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium text-slate-500">N°</th>
+                  <th className="text-left px-4 py-2 font-medium text-slate-500">Vencimiento</th>
+                  <th className="text-right px-4 py-2 font-medium text-slate-500">Total</th>
+                  <th className="text-right px-4 py-2 font-medium text-slate-500">Saldo</th>
+                  <th className="text-left px-4 py-2 font-medium text-slate-500">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cuotas.map((cuota: any) => (
+                  <tr key={cuota.id} className={cn(
+                    'border-t border-slate-100 dark:border-slate-800',
+                    cuota.estado === 'pagada' && 'opacity-50',
+                    cuota.estado === 'vencida' && 'bg-red-50/40 dark:bg-red-950/10',
+                  )}>
+                    <td className="px-4 py-2 font-medium">{cuota.numero_cuota}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
+                      {formatFecha(cuota.fecha_vencimiento)}
+                    </td>
+                    <td className="px-4 py-2 text-right">{formatMoneda(cuota.total ?? cuota.importe_total)}</td>
+                    <td className="px-4 py-2 text-right font-medium">
+                      {cuota.estado === 'pagada'
+                        ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" />
+                        : formatMoneda(cuota.saldo_pendiente)
+                      }
+                    </td>
+                    <td className="px-4 py-2"><StatusBadge estado={cuota.estado} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <Button size="sm" className="gap-2 text-xs bg-green-600 hover:bg-green-500"
+              onClick={() => router.push(`/cobranza?credito_id=${credito.id}`)}>
+              <DollarSign className="w-3.5 h-3.5" /> Ir a cobrar
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Componente auxiliar
 function Fila({ label, valor }: { label: string; valor: string | null | undefined }) {
   if (!valor) return null
   return (

@@ -1,23 +1,25 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { crearAutorizacionAction } from '@/lib/actions/autorizaciones'
 import { autorizacionSchema, type AutorizacionData } from '@/lib/validations/autorizacion.schema'
+import { calcularPlanDePagos, calcularTotalFinanciado, OPCIONES_REDONDEO } from '@/lib/calculadora/amortizacion'
+import { SistemaAmortizacion } from '@/types/enums'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { Loader2, Search, User, AlertCircle } from 'lucide-react'
+import { Loader2, Search, User, AlertCircle, Calculator } from 'lucide-react'
 import { formatMoneda, formatDNI } from '@/lib/utils/formatters'
 import { createClient } from '@/lib/supabase/client'
 
 interface AutorizacionFormProps {
   comercios: { id: string; codigo: string; nombre: string }[]
-  planes: { id: string; codigo: string; descripcion: string; cantidad_cuotas: number; tasa_anual: number }[]
+  planes: { id: string; codigo: string; descripcion: string; cantidad_cuotas: number; tasa_anual: number; sistema_amortizacion?: string }[]
 }
 
 export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
@@ -25,6 +27,10 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
   const [buscandoCliente, setBuscandoCliente] = useState(false)
   const [clienteEncontrado, setClienteEncontrado] = useState<any>(null)
   const [busquedaDni, setBusquedaDni] = useState('')
+  const [planSeleccionado, setPlanSeleccionado] = useState<any>(null)
+  const [simulacion, setSimulacion] = useState<{ cuota: number; cuotaRedondeada: number; total: number } | null>(null)
+  const [redondeo, setRedondeo] = useState(0)
+  const [redondeoHacia, setRedondeoHacia] = useState<'arriba' | 'abajo' | 'cercano'>('cercano')
   const supabase = createClient()
 
   const form = useForm<AutorizacionData>({
@@ -35,6 +41,47 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
       con_tarjeta: false,
     },
   })
+
+  const capital = form.watch('capital_pedido')
+
+  // Simular cuota cuando cambian capital, plan o redondeo
+  useEffect(() => {
+    if (!planSeleccionado || !capital || capital <= 0) {
+      setSimulacion(null)
+      return
+    }
+    try {
+      const hoy = new Date()
+      hoy.setMonth(hoy.getMonth() + 1)
+      const fechaVto = hoy.toISOString().split('T')[0]
+      const sistema = (planSeleccionado.sistema_amortizacion ?? 'directo') as SistemaAmortizacion
+
+      const planBase = calcularPlanDePagos(
+        { monto: capital, tasaAnual: planSeleccionado.tasa_anual, cantidadCuotas: planSeleccionado.cantidad_cuotas, fechaPrimerVencimiento: fechaVto },
+        sistema
+      )
+      const planRedondeado = redondeo > 0
+        ? calcularPlanDePagos(
+            { monto: capital, tasaAnual: planSeleccionado.tasa_anual, cantidadCuotas: planSeleccionado.cantidad_cuotas, fechaPrimerVencimiento: fechaVto, redondeo, redondeoHacia },
+            sistema
+          )
+        : planBase
+
+      setSimulacion({
+        cuota: planBase[0]?.total ?? 0,
+        cuotaRedondeada: planRedondeado[0]?.total ?? 0,
+        total: calcularTotalFinanciado(planRedondeado),
+      })
+    } catch {
+      setSimulacion(null)
+    }
+  }, [capital, planSeleccionado, redondeo, redondeoHacia])
+
+  function handlePlanChange(planId: string) {
+    const plan = planes.find(p => p.id === planId)
+    setPlanSeleccionado(plan ?? null)
+    form.setValue('plan_id', planId)
+  }
 
   async function buscarCliente() {
     if (!busquedaDni.trim()) return
@@ -50,25 +97,15 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
 
     setBuscandoCliente(false)
 
-    if (!data) {
-      toast.error('No se encontró ningún cliente con ese documento')
-      return
-    }
-
-    if (data.estado === 'inhabilitado' || data.estado === 'baja') {
-      toast.error('Este cliente está inhabilitado')
-      return
-    }
+    if (!data) { toast.error('No se encontró ningún cliente con ese documento'); return }
+    if (data.estado === 'inhabilitado' || data.estado === 'baja') { toast.error('Este cliente está inhabilitado'); return }
 
     setClienteEncontrado(data)
     form.setValue('cliente_id', data.id)
   }
 
   function handleSubmit(data: AutorizacionData) {
-    if (!clienteEncontrado) {
-      toast.error('Seleccioná un cliente primero')
-      return
-    }
+    if (!clienteEncontrado) { toast.error('Seleccioná un cliente primero'); return }
     startTransition(async () => {
       const result = await crearAutorizacionAction(data)
       if (result?.error) toast.error(result.error)
@@ -155,9 +192,7 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
               <SelectTrigger><SelectValue placeholder="Sin comercio" /></SelectTrigger>
               <SelectContent>
                 {comercios.map(c => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.codigo} — {c.nombre}
-                  </SelectItem>
+                  <SelectItem key={c.id} value={c.id}>{c.codigo} — {c.nombre}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -165,17 +200,48 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
 
           <div className="space-y-2">
             <Label>Plan (opcional)</Label>
-            <Select onValueChange={v => form.setValue('plan_id', v)}>
+            <Select onValueChange={handlePlanChange}>
               <SelectTrigger><SelectValue placeholder="Sin plan" /></SelectTrigger>
               <SelectContent>
                 {planes.map(p => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.codigo} — {p.descripcion}
+                    {p.codigo} — {p.descripcion} ({p.cantidad_cuotas} cuotas)
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {/* Redondeo — solo aparece si hay plan seleccionado */}
+          {planSeleccionado && (
+            <>
+              <div className="space-y-2">
+                <Label>Redondeo de cuota</Label>
+                <Select defaultValue="0" onValueChange={v => setRedondeo(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {OPCIONES_REDONDEO.map(o => (
+                      <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {redondeo > 0 && (
+                <div className="space-y-2">
+                  <Label>Redondear hacia</Label>
+                  <Select defaultValue="cercano" onValueChange={v => setRedondeoHacia(v as any)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cercano">Más cercano</SelectItem>
+                      <SelectItem value="arriba">Arriba (favorece empresa)</SelectItem>
+                      <SelectItem value="abajo">Abajo (favorece cliente)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </>
+          )}
 
           <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg self-end">
             <input type="checkbox" id="cancelacion_deuda" {...form.register('cancelacion_deuda')} className="w-4 h-4 rounded" />
@@ -192,6 +258,35 @@ export function AutorizacionForm({ comercios, planes }: AutorizacionFormProps) {
             <Textarea {...form.register('observaciones')} placeholder="Observaciones sobre la autorización..." rows={2} />
           </div>
         </div>
+
+        {/* Simulador de cuota */}
+        {simulacion && planSeleccionado && (
+          <div className="mt-5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-4">
+            <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2 mb-3">
+              <Calculator className="w-4 h-4" /> Simulación — {planSeleccionado.codigo}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-500">Cuota exacta</p>
+                <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatMoneda(simulacion.cuota)}</p>
+              </div>
+              {redondeo > 0 && simulacion.cuotaRedondeada !== simulacion.cuota && (
+                <div>
+                  <p className="text-xs text-blue-600 dark:text-blue-500">Cuota redondeada</p>
+                  <p className="text-xl font-bold text-green-700 dark:text-green-400">{formatMoneda(simulacion.cuotaRedondeada)}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-500">Total a pagar</p>
+                <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatMoneda(simulacion.total)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-500">Cuotas</p>
+                <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{planSeleccionado.cantidad_cuotas}</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">

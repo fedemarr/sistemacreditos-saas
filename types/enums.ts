@@ -40,6 +40,7 @@ export enum EstadoCuota {
 export enum SistemaAmortizacion {
   FRANCES = 'frances',
   ALEMAN = 'aleman',
+  DIRECTO = 'directo',
 }
 
 export enum MedioPago {
